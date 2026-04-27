@@ -81,6 +81,9 @@ code, pre, .mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, M
   background: color-mix(in oklch, var(--bg) 85%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 .nav-inner {
   display: flex;
@@ -1327,7 +1330,7 @@ footer {
 }
 .docs-sidebar {
   position: sticky;
-  top: 88px;
+  top: calc(88px + env(safe-area-inset-top, 0px));
   font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   display: flex;
@@ -1671,16 +1674,16 @@ footer {
   /* drawer: hidden by default, slides in below nav when open */
   .nav-links {
     position: fixed;
-    top: 56px;
+    top: calc(56px + env(safe-area-inset-top, 0px));
     left: 0;
     right: 0;
     flex-direction: column;
     gap: 4px;
-    padding: 16px 20px 24px;
+    padding: 16px 20px calc(24px + env(safe-area-inset-bottom, 0px));
     background: var(--bg);
     border-bottom: 1px solid var(--line);
     box-shadow: 0 8px 24px rgba(0,0,0,0.06);
-    transform: translateY(-110%);
+    transform: translateY(-200%);
     transition: transform .22s ease;
     z-index: 40;
   }
