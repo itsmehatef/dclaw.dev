@@ -1,0 +1,61 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import DocsShell from '../../components/DocsShell.astro';
+---
+<BaseLayout title="Quickstart · dclaw" route="docs">
+  <DocsShell active="quickstart">
+    <article>
+      <div class="doc-h1-block">
+        <div class="doc-eyebrow">quickstart · ~5 min</div>
+        <h1 class="doc-h1">From install to first message.</h1>
+      </div>
+      <p class="doc-p">
+        Tested on macOS 14 + Linux (Ubuntu 22.04, Debian 12). Requires <span class="mono">docker 24+</span>. Go is bundled into the brew formula; you don't need a Go toolchain.
+      </p>
+
+      <div class="doc-callout doc-callout-warn">
+        <div class="doc-callout-title">Docker is the sandbox</div>
+        <div>dclaw runs every agent inside Docker. If <span class="mono">docker info</span> doesn't work for your user, fix that first — Colima, Docker Desktop, or rootless Docker all work. <span class="mono">dclaw doctor</span> will tell you what's missing.</div>
+      </div>
+
+      <h2 class="doc-h2">1 · Install</h2>
+      <pre class="doc-code"><code>brew install itsmehatef/tap/dclaw</code><span class="doc-code-lang">shell</span></pre>
+
+      <h2 class="doc-h2">2 · Initialize + start the daemon</h2>
+      <pre class="doc-code"><code>{`dclaw init               # writes ~/.config/dclaw/config.yaml
+dclaw doctor             # checks docker, ports, write perms
+dclaw daemon start       # backgrounded; logs at ~/.local/state/dclaw/daemon.log`}</code><span class="doc-code-lang">shell</span></pre>
+      <p class="doc-p">
+        <span class="mono">init</span> creates an empty fleet, a default config, and (on first run) pulls the agent image — about 250MB.
+      </p>
+
+      <h2 class="doc-h2">3 · Spawn an agent</h2>
+      <pre class="doc-code"><code>{`dclaw agent create scratch \\
+  --image=dclaw-agent:v0.1 \\
+  --workspace=~/dclaw/scratch`}</code><span class="doc-code-lang">shell</span></pre>
+      <p class="doc-p">
+        The workspace is bind-mounted into the container at <span class="mono">/workspace</span>. Path validation runs <em>before</em> mount: denylist (<span class="mono">/etc</span>, <span class="mono">/var</span>, <span class="mono">docker.sock</span>) is absolute; symlinks are resolved.
+      </p>
+
+      <h2 class="doc-h2">4 · Talk to it</h2>
+      <pre class="doc-code"><code>{`dclaw agent chat scratch --one-shot 'list files in workspace'
+# → bash tool runs inside the container; output streams back`}</code><span class="doc-code-lang">shell</span></pre>
+
+      <h2 class="doc-h2">5 · Tear it down</h2>
+      <pre class="doc-code"><code>{`dclaw agent destroy scratch       # stops + removes container, keeps workspace
+dclaw daemon stop                 # if you're done`}</code><span class="doc-code-lang">shell</span></pre>
+
+      <div class="doc-callout doc-callout-ok">
+        <div class="doc-callout-title">That's the loop.</div>
+        <div>Spawn → chat → destroy. Everything else (channel plugins, fleet.yaml, multi-agent orchestration) layers on top of these four commands.</div>
+      </div>
+
+      <h2 class="doc-h2">Where to next</h2>
+      <ul class="doc-ul">
+        <li><a class="doc-link" href="/docs/cli">CLI reference</a> — every flag</li>
+        <li><a class="doc-link" href="/docs/fleet">fleet.yaml</a> — declarative agents</li>
+        <li><a class="doc-link" href="/architecture">Architecture</a> — what's actually inside the container</li>
+      </ul>
+    </article>
+  </DocsShell>
+</BaseLayout>

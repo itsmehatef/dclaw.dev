@@ -1,79 +1,276 @@
 ---
-const title = "dclaw — sandboxed AI agents in containers";
-const description = "Container-native multi-agent platform with mandatory sandboxing, independently versioned channel plugins, and a control-plane / data-plane split.";
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Diagram from '../components/Diagram.astro';
+
+const FEATURES = [
+  { id: "01", title: "Mandatory sandboxing", desc: 'Every agent — brain and tools — runs inside a Docker container. There is no sandbox.mode: "off". One prompt injection = one destroyed container.' },
+  { id: "02", title: "Hardened container posture", desc: "CapDrop ALL · no-new-privileges · ReadonlyRootfs · tmpfs overlays for /tmp+/run · non-root uid 1000 · PidsLimit 256 · seccomp default. mknod, ptrace, setuid, fork-bomb — all return EPERM." },
+  { id: "03", title: "Path-validated workspaces", desc: "workspace-root allow-root + system denylist (/etc, /var, docker.sock, Docker Desktop socket). Symlink-resolved before mount. --workspace-trust is the only escape, and it's logged." },
+  { id: "04", title: "pi-mono under the hood", desc: "Agent loop is @mariozechner/pi-coding-agent — 34.6k stars, MIT, multi-model. We do not rewrite the agentic loop. We wrap it." },
+  { id: "05", title: "NDJSON audit log", desc: "Every agent-create decision (pass / forbidden / trust) lands in audit.log with rotation: 10 MB × 5 files. O_APPEND + O_SYNC + 0600. Reconstruct who-trusted-what after the fact." },
+  { id: "06", title: "First-run that actually works", desc: "dclaw init creates the allow-root, dclaw doctor preflights seven checks, dclaw daemon start brings up the control plane. State-dir honors XDG on Linux, ~/.dclaw on macOS." },
+];
+
+const COMPARE_ROWS: [string, string, string][] = [
+  ["Sandbox scope",      "Optional, bash-only",        "Mandatory, full-agent"],
+  ["Agent loop",         "Runs on bare metal",         "Runs inside container"],
+  ["File operations",    "Bare metal",                 "Inside container"],
+  ["Network egress",     "Bare metal",                 "Per-agent iptables allowlist"],
+  ["Agent isolation",    "Shared process",             "One container per agent"],
+  ["Blast radius",       "One compromise = full host", "One compromise = one agent"],
+];
+
+const POSTURE: [string, string][] = [
+  ["CapDrop ALL", "Every Linux capability dropped. mknod fails with EPERM. CAP_NET_RAW, CAP_MKNOD, CAP_SYS_CHROOT — gone."],
+  ["no-new-privileges", "Setuid/setgid bits cannot grant new privileges via execve. Defense vs CVE-2019-5736 and similar runc escapes."],
+  ["ReadonlyRootfs", "Rootfs is read-only. /tmp and /run are tmpfs overlays with noexec,nosuid,nodev. /workspace is the only persistent write surface."],
+  ["uid 1000:1000", "Daemon enforces non-root user regardless of image USER directive. A regressed image still can't run as root."],
+  ["PidsLimit 256", "Fork bomb caps at 256 processes. pi-mono steady-state is ~5. The 257th fork returns EAGAIN."],
+  ["seccomp default", "Docker's daemon-loaded default profile applied. unshare(CLONE_NEWUSER), keyctl, ptrace — denied for unprivileged."],
+  ["docker.sock denylist", "Three Docker socket paths absolutely denied as workspaces. Linux /var/run, systemd /run, Docker Desktop macOS. --workspace-trust can't bypass."],
+];
+
+const MILESTONES = [
+  { ver: "v0.2.0-cli",            status: "shipped", done: true,  current: false, title: "CLI bones",         desc: "dclaw version, --help, structured JSON error envelopes. EX_UNAVAILABLE for daemon-bound commands." },
+  { ver: "v0.3.0-alpha → beta.1", status: "shipped", done: true,  current: false, title: "Daemon + paths",    desc: "Go daemon, JSON-RPC wire protocol, fleet lifecycle. workspace-root validator, --workspace-trust, NDJSON audit log." },
+  { ver: "v0.3.0-beta.2",         status: "current", done: false, current: true,  title: "Sandbox hardening", desc: "Container posture: cap drop, no-new-privileges, ReadonlyRootfs, tmpfs, non-root uid, PidsLimit, docker.sock denylist." },
+  { ver: "v1.0 GA",               status: "next",    done: false, current: false, title: "General availability", desc: "Web dashboard, egress allowlist wiring, distroless agent image. Channel plugins follow." },
+];
+
+const INSTALL_CMDS = {
+  brew: "brew install itsmehatef/tap/dclaw && dclaw init && dclaw daemon start",
+  source: "git clone https://github.com/itsmehatef/dclaw && cd dclaw && make install && dclaw init && dclaw daemon start",
+};
+const INSTALL_HINTS = {
+  brew: "macOS",
+  source: "Linux · requires go 1.25+",
+};
 ---
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width" />
-    <meta name="description" content={description} />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://dclaw.dev" />
-    <title>{title}</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  </head>
-  <body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col">
-    <main class="flex-1 flex items-center justify-center px-6 py-16">
-      <div class="max-w-2xl w-full">
-        <h1 class="text-5xl sm:text-6xl font-bold tracking-tight mb-4">
-          <span class="text-white">d</span><span class="text-zinc-400">claw</span>
+
+<BaseLayout title="dclaw · Container-native multi-agent platform" route="home">
+  <section class="hero" data-screen-label="Home / Hero">
+    <div class="container-page hero-grid">
+      <div>
+        <div class="eyebrow">v0.3.0-beta.2 · sandbox-hardening · apache-2.0</div>
+        <h1 class="hero-title">
+          Container-native<br />
+          multi-agent platform. <em>hardened by default.</em>
         </h1>
-        <p class="text-xl text-zinc-300 mb-2">
-          Sandboxed AI agents in containers.
-        </p>
-        <p class="text-base text-zinc-500 mb-10">
-          Container-native multi-agent platform with mandatory sandboxing,
-          independently versioned channel plugins, and a control-plane / data-plane split.
+        <p class="hero-sub">
+          Every agent runs inside its own Docker container — brain, tools, filesystem, network. Caps dropped, rootfs read-only, uid 1000, PIDs capped at 256. A Go control plane routes; pi-mono containers think. One compromise stays one compromise.
         </p>
 
-        <div class="flex flex-wrap gap-4 mb-10">
-          <a
-            href="https://github.com/itsmehatef/dclaw"
-            class="inline-flex items-center px-5 py-2.5 rounded-md bg-white text-black font-medium hover:bg-zinc-200 transition"
-          >
-            GitHub
-            <svg class="w-4 h-4 ml-2" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-            </svg>
-          </a>
-          <a
-            href="https://github.com/itsmehatef/dclaw/blob/main/docs/architecture.md"
-            class="inline-flex items-center px-5 py-2.5 rounded-md border border-zinc-700 text-zinc-100 font-medium hover:bg-zinc-900 transition"
-          >
-            Architecture
-          </a>
-          <a
-            href="https://github.com/itsmehatef/dclaw/blob/main/docs/wire-protocol-spec.md"
-            class="inline-flex items-center px-5 py-2.5 rounded-md border border-zinc-700 text-zinc-100 font-medium hover:bg-zinc-900 transition"
-          >
-            Wire Protocol
+        <div class="install-block">
+          <div class="install-tabs">
+            <button type="button" class="install-tab active" data-install-tab data-cmd={INSTALL_CMDS.brew} data-hint={INSTALL_HINTS.brew}>brew</button>
+            <button type="button" class="install-tab" data-install-tab data-cmd={INSTALL_CMDS.source} data-hint={INSTALL_HINTS.source}>source</button>
+            <span class="install-tab-hint mono" data-install-hint>{INSTALL_HINTS.brew}</span>
+          </div>
+          <div class="install-body">
+            <span class="prompt">$</span>
+            <span class="cmd" data-install-cmd>{INSTALL_CMDS.brew}</span>
+            <button type="button" class="copy-btn" data-copy={INSTALL_CMDS.brew}>copy</button>
+          </div>
+        </div>
+
+        <div class="cta-row">
+          <a href="/architecture" class="btn-primary">Read the architecture →</a>
+          <a href="https://github.com/itsmehatef/dclaw" target="_blank" rel="noopener" class="btn-ghost">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 00-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.8.1-.8 1.3.1 2 1.3 2 1.3 1.1 2 3 1.4 3.7 1.1.1-.8.5-1.4.8-1.7-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 011.3-3.3c-.1-.3-.6-1.7.1-3.5 0 0 1-.3 3.4 1.3a11.8 11.8 0 016.2 0c2.3-1.6 3.4-1.3 3.4-1.3.6 1.8.2 3.2.1 3.5.8.9 1.3 2 1.3 3.3 0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0012 .3"></path></svg>
+            github.com/itsmehatef/dclaw
           </a>
         </div>
 
-        <div class="border-t border-zinc-800 pt-6 text-sm text-zinc-500">
-          <p class="mb-1">
-            <span class="font-mono bg-zinc-900 px-2 py-0.5 rounded text-zinc-300">v0.1.0</span>
-            — Phase 1 MVP: one agent loop working inside a container.
-          </p>
-          <p>
-            Built by <a href="https://itsmehatef.me" class="text-zinc-300 hover:text-white underline">Hatef</a>.
-            Apache-2.0 licensed.
-          </p>
+        <div class="hero-meta">
+          <span>◇ <b>~250MB</b> image</span>
+          <span>◇ <b>Alpine</b> base · uid 1000</span>
+          <span>◇ requires <b>go 1.25+</b> · <b>docker 24+</b></span>
+          <span>◇ <b>macOS</b> + <b>Linux</b> · XDG-aware</span>
         </div>
       </div>
-    </main>
 
-    <footer class="border-t border-zinc-900 py-6 px-6 text-sm text-zinc-600">
-      <div class="max-w-2xl mx-auto flex flex-wrap justify-between gap-4">
-        <span>dclaw</span>
-        <div class="flex gap-4">
-          <a href="https://github.com/itsmehatef/dclaw" class="hover:text-zinc-400">GitHub</a>
-          <a href="https://itsmehatef.me" class="hover:text-zinc-400">Blog</a>
+      <div>
+        <Diagram />
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home / Features">
+    <div class="container-page">
+      <div class="section-header">
+        <div>
+          <div class="section-label">— what's in beta.2 today</div>
+          <h2 class="section-title">Six decisions, baked in.</h2>
+        </div>
+        <p class="section-sub">
+          dclaw is opinionated. These are calls made once so you don't make them per-deployment. They do not come back as flags. The denylist is absolute on every OS — even <span class="mono">--workspace-trust</span> can't bypass it.
+        </p>
+      </div>
+      <div class="features">
+        {FEATURES.map((f) => (
+          <div class="feature">
+            <div class="feature-id">{f.id} ·</div>
+            <h3 class="feature-title">{f.title}</h3>
+            <p class="feature-desc">{f.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home / Posture">
+    <div class="container-page">
+      <div class="section-header">
+        <div>
+          <div class="section-label">— container posture · beta.2</div>
+          <h2 class="section-title">Seven boxes the agent runs inside of.</h2>
+        </div>
+        <p class="section-sub">
+          Paths hardening (beta.1) bounded WHERE the bind-mount points. Sandbox hardening (beta.2) bounds WHAT the containerized agent can do once inside. There is no escape hatch for any of these.
+        </p>
+      </div>
+      <div class="features">
+        {POSTURE.map(([t, d], i) => (
+          <div class="feature">
+            <div class="feature-id">{String(i + 1).padStart(2, '0')} ·</div>
+            <h3 class="feature-title mono" style="font-size:16px">{t}</h3>
+            <p class="feature-desc">{d}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home / Compare">
+    <div class="container-page">
+      <div class="section-header">
+        <div>
+          <div class="section-label">— against bare-metal runtimes</div>
+          <h2 class="section-title">Sandboxing isn't a feature. It's the whole point.</h2>
+        </div>
+        <p class="section-sub">
+          Most agent frameworks run on your host. The agent's bash tool IS your bash. The agent's network IS your network. That is a fine demo and a poor production story.
+        </p>
+      </div>
+      <div class="compare">
+        <div class="compare-row head">
+          <div class="compare-cell">Dimension</div>
+          <div class="compare-cell">Bare-metal agent runtimes</div>
+          <div class="compare-cell">dclaw</div>
+        </div>
+        {COMPARE_ROWS.map(([k, a, b]) => (
+          <div class="compare-row">
+            <div class="compare-cell mono">{k}</div>
+            <div class="compare-cell dim">{a}</div>
+            <div class="compare-cell strong">{b}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home / Roadmap">
+    <div class="container-page">
+      <div class="section-header">
+        <div>
+          <div class="section-label">— roadmap</div>
+          <h2 class="section-title">Shipped in phases. No vaporware.</h2>
+        </div>
+        <p class="section-sub">
+          We're in beta.2 today. Each phase ships with working binaries and a public changelog. Container posture is the second-to-last gate before GA.
+        </p>
+      </div>
+      <div class="roadmap">
+        {MILESTONES.map((m) => (
+          <div class={`milestone ${m.done ? 'done' : ''} ${m.current ? 'current' : ''}`}>
+            <div class="milestone-ver">
+              <span>{m.ver}</span>
+              <span class="milestone-status">{m.status}</span>
+            </div>
+            <h4 class="milestone-title">{m.title}</h4>
+            <p class="milestone-desc">{m.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <footer data-screen-label="Home / Footer">
+    <div class="container-page">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <div class="brand" style="margin-bottom:12px">
+            <img src="/logo-96.png" alt="" class="brand-mark-img" width="32" height="32" />
+            <span>dclaw</span>
+            <span class="brand-version" style="margin-left:4px">v0.3.0-beta.2</span>
+          </div>
+          <p style="color:var(--fg-muted); font-size:13.5px; margin:0; max-width:32ch;">
+            Container-native multi-agent platform. Sandboxing is mandatory. Apache-2.0.
+          </p>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="/architecture">Architecture</a></li>
+            <li><a href="/changelog">Changelog</a></li>
+            <li><a href="#">Security</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Docs</h4>
+          <ul>
+            <li><a href="/docs/quickstart">Quickstart</a></li>
+            <li><a href="/docs/fleet">fleet.yaml</a></li>
+            <li><a href="/docs/cli">CLI reference</a></li>
+            <li><a href="/docs">All docs</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/itsmehatef/dclaw" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="#">Discord</a></li>
+            <li><a href="https://github.com/badlogic/pi-mono" target="_blank" rel="noopener">pi-mono</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
         </div>
       </div>
-    </footer>
-  </body>
-</html>
+      <div class="footer-credit">
+        <span>© 2026 dclaw · apache-2.0</span>
+        <span>agent loop by <a href="https://github.com/badlogic/pi-mono" style="color:var(--fg-muted); text-decoration:underline" target="_blank" rel="noopener">pi-mono</a> · mit</span>
+      </div>
+    </div>
+  </footer>
+</BaseLayout>
+
+<script is:inline>
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-copy]');
+    if (!btn) return;
+    const txt = btn.getAttribute('data-copy');
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
+    btn.classList.add('copied');
+    btn.textContent = 'copied';
+    setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copy'; }, 1400);
+  });
+
+  document.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-install-tab]');
+    if (!tab) return;
+    document.querySelectorAll('[data-install-tab]').forEach((t) => {
+      t.classList.toggle('active', t === tab);
+    });
+    const cmd = tab.dataset.cmd;
+    const hint = tab.dataset.hint;
+    const cmdEl = document.querySelector('[data-install-cmd]');
+    const hintEl = document.querySelector('[data-install-hint]');
+    const copyBtn = document.querySelector('.install-body [data-copy]');
+    if (cmdEl) cmdEl.textContent = cmd;
+    if (hintEl) hintEl.textContent = hint;
+    if (copyBtn) {
+      copyBtn.setAttribute('data-copy', cmd);
+      copyBtn.classList.remove('copied');
+      copyBtn.textContent = 'copy';
+    }
+  });
+</script>
