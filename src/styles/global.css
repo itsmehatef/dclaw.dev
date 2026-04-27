@@ -275,9 +275,12 @@ h1.hero-title em {
   border-right: 1px solid var(--line);
   position: relative;
 }
+.install-tab { cursor: pointer; transition: color .12s; }
+.install-tab:not(.active):hover { color: var(--fg); }
 .install-tab.active {
   color: var(--fg);
   background: var(--bg-card);
+  cursor: default;
 }
 .install-tab.active::after {
   content: "";

@@ -37,7 +37,14 @@ const MILESTONES = [
   { ver: "v1.0 GA",               status: "next",    done: false, current: false, title: "General availability", desc: "Web dashboard, egress allowlist wiring, distroless agent image. Channel plugins follow." },
 ];
 
-const INSTALL_CMD = "brew install itsmehatef/tap/dclaw && dclaw init && dclaw daemon start";
+const INSTALL_CMDS = {
+  brew: "brew install itsmehatef/tap/dclaw && dclaw init && dclaw daemon start",
+  source: "git clone https://github.com/itsmehatef/dclaw && cd dclaw && make install && dclaw init && dclaw daemon start",
+};
+const INSTALL_HINTS = {
+  brew: "macOS",
+  source: "Linux · requires go 1.25+",
+};
 ---
 
 <BaseLayout title="dclaw · Container-native multi-agent platform" route="home">
@@ -55,13 +62,14 @@ const INSTALL_CMD = "brew install itsmehatef/tap/dclaw && dclaw init && dclaw da
 
         <div class="install-block">
           <div class="install-tabs">
-            <span class="install-tab active">brew</span>
-            <span class="install-tab-hint mono">macOS · Linux</span>
+            <button type="button" class="install-tab active" data-install-tab data-cmd={INSTALL_CMDS.brew} data-hint={INSTALL_HINTS.brew}>brew</button>
+            <button type="button" class="install-tab" data-install-tab data-cmd={INSTALL_CMDS.source} data-hint={INSTALL_HINTS.source}>source</button>
+            <span class="install-tab-hint mono" data-install-hint>{INSTALL_HINTS.brew}</span>
           </div>
           <div class="install-body">
             <span class="prompt">$</span>
-            <span class="cmd">{INSTALL_CMD}</span>
-            <button type="button" class="copy-btn" data-copy={INSTALL_CMD}>copy</button>
+            <span class="cmd" data-install-cmd>{INSTALL_CMDS.brew}</span>
+            <button type="button" class="copy-btn" data-copy={INSTALL_CMDS.brew}>copy</button>
           </div>
         </div>
 
@@ -244,5 +252,25 @@ const INSTALL_CMD = "brew install itsmehatef/tap/dclaw && dclaw init && dclaw da
     btn.classList.add('copied');
     btn.textContent = 'copied';
     setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copy'; }, 1400);
+  });
+
+  document.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-install-tab]');
+    if (!tab) return;
+    document.querySelectorAll('[data-install-tab]').forEach((t) => {
+      t.classList.toggle('active', t === tab);
+    });
+    const cmd = tab.dataset.cmd;
+    const hint = tab.dataset.hint;
+    const cmdEl = document.querySelector('[data-install-cmd]');
+    const hintEl = document.querySelector('[data-install-hint]');
+    const copyBtn = document.querySelector('.install-body [data-copy]');
+    if (cmdEl) cmdEl.textContent = cmd;
+    if (hintEl) hintEl.textContent = hint;
+    if (copyBtn) {
+      copyBtn.setAttribute('data-copy', cmd);
+      copyBtn.classList.remove('copied');
+      copyBtn.textContent = 'copy';
+    }
   });
 </script>
