@@ -17,22 +17,24 @@ const REGIONS: Record<string, { label: string; desc: string }> = {
   </div>
 
   <div class="diagram-stage">
+    <svg class="dg-arrows" data-arrows aria-hidden="true"></svg>
+
     <div class="dg-row dg-row-top">
-      <div class="dg-block dg-user" data-region="user">
+      <div class="dg-block dg-user" data-region="user" data-anchor="user">
         <div class="dg-block-label">USER</div>
         <div class="dg-block-name">Discord · Slack · WhatsApp</div>
       </div>
-      <div class="dg-block dg-ext" data-region="ext">
+      <div class="dg-block dg-ext" data-region="ext" data-anchor="ext">
         <div class="dg-block-label">LLM PROVIDER · EXTERNAL</div>
         <div class="dg-block-name">Anthropic · OpenAI · Google · …</div>
       </div>
-      <div class="dg-block dg-ops" data-region="ops">
+      <div class="dg-block dg-ops" data-region="ops" data-anchor="ops">
         <div class="dg-block-label">OPERATIONAL SURFACE</div>
         <div class="dg-block-name">CLI · fleet.yaml · web</div>
       </div>
     </div>
 
-    <div class="dg-band dg-plugin on" data-region="plugin">
+    <div class="dg-band dg-plugin on" data-region="plugin" data-anchor="plugin">
       <div class="dg-band-tag">CHANNEL PLUGINS · independently versioned containers</div>
       <div class="dg-pills">
         <span class="dg-pill">discord v1.5.0</span>
@@ -41,7 +43,7 @@ const REGIONS: Record<string, { label: string; desc: string }> = {
       </div>
     </div>
 
-    <div class="dg-band dg-daemon on" data-region="daemon" data-default>
+    <div class="dg-band dg-daemon on" data-region="daemon" data-anchor="daemon" data-default>
       <div class="dg-band-tag">dclaw DAEMON · Go · CONTROL PLANE · runs on host</div>
       <div class="dg-pills">
         <span class="dg-pill">channel router</span>
@@ -52,12 +54,12 @@ const REGIONS: Record<string, { label: string; desc: string }> = {
     </div>
 
     <div class="dg-row dg-row-data">
-      <div class="dg-block dg-main" data-region="main">
+      <div class="dg-block dg-main" data-region="main" data-anchor="main">
         <div class="dg-block-label">MAIN AGENT · ~400MB · DATA PLANE</div>
         <div class="dg-block-name">always-on</div>
         <div class="dg-block-sub mono">bash · file · grep · web</div>
       </div>
-      <div class="dg-block dg-workers" data-region="workers">
+      <div class="dg-block dg-workers" data-region="workers" data-anchor="workers">
         <div class="dg-block-label">WORKER CONTAINERS · ~400MB ea · ephemeral</div>
         <div class="dg-block-name">w·1   w·2   w·N</div>
         <div class="dg-block-sub mono">scoped tools · scoped net · scoped fs</div>
@@ -83,5 +85,99 @@ const REGIONS: Record<string, { label: string; desc: string }> = {
       descEl.textContent = ' — ' + r.desc;
     };
     blocks.forEach((b) => b.addEventListener('mouseenter', () => setActive(b.dataset.region)));
+
+    // Arrow overlay -----------------------------------------------------
+    const stage = root.querySelector('.diagram-stage');
+    const svg = root.querySelector('[data-arrows]');
+    if (!stage || !svg) return;
+
+    const CONNECTIONS = [
+      { from: "user",    fromSide: "bottom", to: "plugin",  toSide: "top",    kind: "solid"  },
+      { from: "plugin",  fromSide: "bottom", to: "daemon",  toSide: "top",    kind: "solid"  },
+      { from: "daemon",  fromSide: "bottom", to: "main",    toSide: "top",    kind: "solid"  },
+      { from: "main",    fromSide: "right",  to: "workers", toSide: "left",   kind: "solid"  },
+      { from: "main",    fromSide: "top",    to: "ext",     toSide: "bottom", kind: "dashed" },
+      { from: "ops",     fromSide: "bottom", to: "daemon",  toSide: "right",  kind: "dashed" },
+    ];
+
+    const anchorPoint = (el, side) => {
+      const stageRect = stage.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      const x0 = r.left - stageRect.left;
+      const y0 = r.top - stageRect.top;
+      const w = r.width, h = r.height;
+      switch (side) {
+        case "top":    return [x0 + w / 2, y0];
+        case "bottom": return [x0 + w / 2, y0 + h];
+        case "left":   return [x0,         y0 + h / 2];
+        case "right":  return [x0 + w,     y0 + h / 2];
+      }
+      return [x0 + w / 2, y0 + h / 2];
+    };
+
+    const pathBetween = (a, b, fromSide, toSide) => {
+      const [ax, ay] = a, [bx, by] = b;
+      // Orthogonal L-shape with mid-point bend on the dominant axis.
+      if ((fromSide === "bottom" || fromSide === "top") && (toSide === "top" || toSide === "bottom")) {
+        const my = (ay + by) / 2;
+        return `M ${ax} ${ay} L ${ax} ${my} L ${bx} ${my} L ${bx} ${by}`;
+      }
+      if ((fromSide === "left" || fromSide === "right") && (toSide === "left" || toSide === "right")) {
+        const mx = (ax + bx) / 2;
+        return `M ${ax} ${ay} L ${mx} ${ay} L ${mx} ${by} L ${bx} ${by}`;
+      }
+      // Mixed: bend at fromSide axis first, then perpendicular to toSide.
+      if (fromSide === "bottom" || fromSide === "top") {
+        return `M ${ax} ${ay} L ${ax} ${by} L ${bx} ${by}`;
+      }
+      return `M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}`;
+    };
+
+    const anchor = (key) => root.querySelector(`[data-anchor="${key}"]`);
+
+    const render = () => {
+      const stageRect = stage.getBoundingClientRect();
+      svg.setAttribute("viewBox", `0 0 ${stageRect.width} ${stageRect.height}`);
+      svg.setAttribute("width", stageRect.width);
+      svg.setAttribute("height", stageRect.height);
+      // clear
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      // marker def
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      defs.innerHTML = `
+        <marker id="dg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+        </marker>
+      `;
+      svg.appendChild(defs);
+
+      CONNECTIONS.forEach((c) => {
+        const fromEl = anchor(c.from);
+        const toEl = anchor(c.to);
+        if (!fromEl || !toEl) return;
+        const a = anchorPoint(fromEl, c.fromSide);
+        const b = anchorPoint(toEl, c.toSide);
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathBetween(a, b, c.fromSide, c.toSide));
+        path.setAttribute("class", "dg-arrow-path" + (c.kind === "dashed" ? " dg-arrow-dashed" : ""));
+        path.setAttribute("marker-end", "url(#dg-arrow)");
+        svg.appendChild(path);
+      });
+    };
+
+    render();
+    let raf = 0;
+    const onResize = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(render);
+    };
+    window.addEventListener("resize", onResize);
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(onResize).observe(stage);
+    }
+    // Re-render after fonts load (size of cells may shift).
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(render);
+    }
   });
 </script>
