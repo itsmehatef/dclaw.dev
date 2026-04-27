@@ -1,0 +1,96 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import DocsShell from '../../components/DocsShell.astro';
+
+const groups = [
+  { name: "lifecycle", commands: [
+    { sig: "dclaw init", desc: "Bootstrap config, fleet, and state dirs. Idempotent. Pulls the default agent image on first run." },
+    { sig: "dclaw doctor", desc: "Diagnose: docker reachable? ports clear? write perms? Returns non-zero on failure with actionable hints." },
+    { sig: "dclaw upgrade", desc: "Pull the latest agent image and restart the daemon if needed. Respects pinned versions in fleet.yaml." },
+  ]},
+  { name: "daemon", commands: [
+    { sig: "dclaw daemon start", desc: "Start the control plane in the background. PID at ~/.local/state/dclaw/daemon.pid." },
+    { sig: "dclaw daemon stop", desc: "Graceful shutdown. Sends SIGTERM, waits for in-flight tool calls to drain, then exits." },
+    { sig: "dclaw daemon status", desc: "Daemon health + uptime + active agent count. Exit 0 if running." },
+    { sig: "dclaw daemon logs [--tail=N] [-f]", desc: "Stream the daemon log. JSON-lines; pipe to jq." },
+  ]},
+  { name: "agent", commands: [
+    { sig: "dclaw agent create <name>", desc: "Spawn a new agent container.", flags: [
+      ["--image", "OCI image. Default: dclaw-agent:v0.1"],
+      ["--workspace", "Host path to bind-mount. Validated against denylist."],
+      ["--workspace-trust", "Override the denylist. Logged. Use only if you know what you're doing."],
+      ["--model", "anthropic/claude-3-5-sonnet | openai/gpt-4o | google/gemini-1.5-pro | … (via pi-mono)"],
+      ["--max-cost", "Hard cap on API spend. Daemon kills the container at the threshold."],
+    ] as [string, string][] },
+    { sig: "dclaw agent chat <name>", desc: "Open an interactive chat session. Streams tool output.", flags: [
+      ["--one-shot 'msg'", "Send a single message and exit."],
+      ["--no-tools", "Disable tool use for this session."],
+    ] as [string, string][] },
+    { sig: "dclaw agent list", desc: "All agents the daemon knows about, with status + uptime." },
+    { sig: "dclaw agent logs <name>", desc: "Per-agent log. Includes model calls, tool execs, sandbox events." },
+    { sig: "dclaw agent destroy <name>", desc: "Stop + remove the container. Workspace is preserved unless --purge." },
+  ]},
+  { name: "fleet", commands: [
+    { sig: "dclaw up", desc: "Reconcile running agents against fleet.yaml. Creates missing, restarts drifted, leaves matching alone." },
+    { sig: "dclaw status", desc: "Per-agent: spec source, image, container state, last health check." },
+    { sig: "dclaw logs [--agent=<name>] [-f]", desc: "Aggregate logs across the fleet." },
+  ]},
+];
+
+const exits: [string, string][] = [
+  ["0",  "success"],
+  ["1",  "user error (bad flag, unknown agent, etc)"],
+  ["2",  "daemon unreachable"],
+  ["3",  "docker unreachable"],
+  ["10", "workspace denied (path on denylist, no --workspace-trust)"],
+  ["20", "image pull failed"],
+  ["30", "model provider auth failed"],
+];
+---
+<BaseLayout title="CLI reference · dclaw" route="docs">
+  <DocsShell active="cli">
+    <article>
+      <div class="doc-h1-block">
+        <div class="doc-eyebrow">reference</div>
+        <h1 class="doc-h1">CLI</h1>
+      </div>
+      <p class="doc-p">
+        Every command, every flag in <span class="mono">v0.3.0-beta.2</span>. Run any command with <span class="mono">--help</span> for the same content inline.
+      </p>
+
+      {groups.map((g) => (
+        <>
+          <h2 class="doc-h2">{g.name}</h2>
+          <div class="cli-table">
+            {g.commands.map((c) => (
+              <div class="cli-cmd">
+                <div class="cli-sig mono">{c.sig}</div>
+                <div class="cli-desc">{c.desc}</div>
+                {c.flags && (
+                  <div class="cli-flags">
+                    {c.flags.map((f) => (
+                      <div class="cli-flag">
+                        <span class="mono cli-flag-name">{f[0]}</span>
+                        <span class="cli-flag-desc">{f[1]}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      ))}
+
+      <h2 class="doc-h2">Exit codes</h2>
+      <div class="doc-kv">
+        {exits.map(([k, v]) => (
+          <div class="doc-kv-row">
+            <div class="doc-kv-key mono">{k}</div>
+            <div class="doc-kv-val">{v}</div>
+          </div>
+        ))}
+      </div>
+    </article>
+  </DocsShell>
+</BaseLayout>

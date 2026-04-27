@@ -1,0 +1,87 @@
+---
+const REGIONS: Record<string, { label: string; desc: string }> = {
+  user:    { label: "user",         desc: "Discord, Slack, WhatsApp messages enter here. Each channel is a versioned plugin container." },
+  plugin:  { label: "channel plugins", desc: "Independently versioned containers — discord v1.5, slack v2.0, whatsapp v0.8. Roll one without touching others." },
+  ops:     { label: "operational surface", desc: "fleet.yaml declarative config · dclaw CLI (Go) · web dashboard (TypeScript). What you actually touch." },
+  daemon:  { label: "dclaw daemon", desc: "Go control plane on host. Channel router · fleet manager · quota enforcement · agent registry (SQLite)." },
+  main:    { label: "main agent",   desc: "Always-on container · ~400MB · DATA PLANE. Calls the configured LLM, holds conversation, runs sandboxed bash/file/grep/web tools." },
+  workers: { label: "worker agents", desc: "Ephemeral · ~400MB each · DATA PLANE. Spawned per task with scoped tools, network, workspace. Destroyed when done." },
+  ext:     { label: "llm provider", desc: "External — Anthropic, OpenAI, Google, OpenRouter, or any pi-mono-supported endpoint. Only the data plane talks to this; daemon never makes LLM calls." },
+};
+---
+
+<div class="diagram" data-diagram>
+  <div class="diagram-header">
+    <span>./architecture · v2 · hover to explore</span>
+    <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </div>
+
+  <div class="diagram-stage">
+    <div class="dg-row dg-row-top">
+      <div class="dg-block dg-user" data-region="user">
+        <div class="dg-block-label">USER</div>
+        <div class="dg-block-name">Discord · Slack · WhatsApp</div>
+      </div>
+      <div class="dg-block dg-ext" data-region="ext">
+        <div class="dg-block-label">LLM PROVIDER · EXTERNAL</div>
+        <div class="dg-block-name">Anthropic · OpenAI · Google · …</div>
+      </div>
+      <div class="dg-block dg-ops" data-region="ops">
+        <div class="dg-block-label">OPERATIONAL SURFACE</div>
+        <div class="dg-block-name">CLI · fleet.yaml · web</div>
+      </div>
+    </div>
+
+    <div class="dg-band dg-plugin on" data-region="plugin">
+      <div class="dg-band-tag">CHANNEL PLUGINS · independently versioned containers</div>
+      <div class="dg-pills">
+        <span class="dg-pill">discord v1.5.0</span>
+        <span class="dg-pill">slack v2.0.3</span>
+        <span class="dg-pill">whatsapp v0.8.2</span>
+      </div>
+    </div>
+
+    <div class="dg-band dg-daemon on" data-region="daemon" data-default>
+      <div class="dg-band-tag">dclaw DAEMON · Go · CONTROL PLANE · runs on host</div>
+      <div class="dg-pills">
+        <span class="dg-pill">channel router</span>
+        <span class="dg-pill">fleet manager</span>
+        <span class="dg-pill">quota enforce</span>
+        <span class="dg-pill">agent registry · SQLite</span>
+      </div>
+    </div>
+
+    <div class="dg-row dg-row-data">
+      <div class="dg-block dg-main" data-region="main">
+        <div class="dg-block-label">MAIN AGENT · ~400MB · DATA PLANE</div>
+        <div class="dg-block-name">always-on</div>
+        <div class="dg-block-sub mono">bash · file · grep · web</div>
+      </div>
+      <div class="dg-block dg-workers" data-region="workers">
+        <div class="dg-block-label">WORKER CONTAINERS · ~400MB ea · ephemeral</div>
+        <div class="dg-block-name">w·1   w·2   w·N</div>
+        <div class="dg-block-sub mono">scoped tools · scoped net · scoped fs</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-detail">
+    <b class="mono" data-detail-label>dclaw daemon</b>
+    <span class="diagram-detail-text" data-detail-desc> — Go control plane on host. Channel router · fleet manager · quota enforcement · agent registry (SQLite).</span>
+  </div>
+</div>
+
+<script is:inline define:vars={{ REGIONS }}>
+  document.querySelectorAll('[data-diagram]').forEach((root) => {
+    const labelEl = root.querySelector('[data-detail-label]');
+    const descEl = root.querySelector('[data-detail-desc]');
+    const blocks = root.querySelectorAll('[data-region]');
+    const setActive = (id) => {
+      blocks.forEach((b) => b.classList.toggle('on', b.dataset.region === id));
+      const r = REGIONS[id] || REGIONS.daemon;
+      labelEl.textContent = r.label;
+      descEl.textContent = ' — ' + r.desc;
+    };
+    blocks.forEach((b) => b.addEventListener('mouseenter', () => setActive(b.dataset.region)));
+  });
+</script>

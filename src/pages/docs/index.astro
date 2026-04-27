@@ -1,0 +1,50 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import DocsShell from '../../components/DocsShell.astro';
+---
+<BaseLayout title="Docs · dclaw" route="docs">
+  <DocsShell active="index">
+    <article>
+      <div class="doc-h1-block">
+        <div class="doc-eyebrow">docs</div>
+        <h1 class="doc-h1">What's here, what's not.</h1>
+      </div>
+      <p class="doc-p">
+        dclaw is in <span class="mono">v0.3.0-beta.2</span>. The CLI, daemon, and sandbox are real and tested. Channel plugins and quota enforcement are partial. Docs follow the same line — what's written below is true; what's marked <span class="docs-soon-tag-inline">soon</span> isn't yet.
+      </p>
+
+      <h2 class="doc-h2">Read these</h2>
+      <div class="docs-card-grid">
+        <a href="/docs/quickstart" class="docs-card">
+          <div class="docs-card-num mono">01</div>
+          <div class="docs-card-title">Quickstart</div>
+          <div class="docs-card-desc">Install dclaw, start the daemon, spawn your first agent. ~5 minutes.</div>
+        </a>
+        <a href="/docs/cli" class="docs-card">
+          <div class="docs-card-num mono">02</div>
+          <div class="docs-card-title">CLI reference</div>
+          <div class="docs-card-desc">Every command and flag. <span class="mono">up · status · logs · agent · daemon · doctor · upgrade</span>.</div>
+        </a>
+        <a href="/docs/fleet" class="docs-card">
+          <div class="docs-card-num mono">03</div>
+          <div class="docs-card-title">fleet.yaml</div>
+          <div class="docs-card-desc">The declarative config. Schema, examples, and validation rules the daemon applies on load.</div>
+        </a>
+      </div>
+
+      <h2 class="doc-h2">Coming soon</h2>
+      <p class="doc-p">We don't ship docs for things that aren't stable. Here's the queue, in order:</p>
+      <div class="doc-kv">
+        <div class="doc-kv-row"><div class="doc-kv-key mono">Channel plugins</div><div class="doc-kv-val">How to write a plugin against the channel-router contract. Blocked on plugin protocol freeze.</div></div>
+        <div class="doc-kv-row"><div class="doc-kv-key mono">Recipes</div><div class="doc-kv-val">End-to-end how-tos: code-review bot, on-call triage, Linear sync. Blocked on having ≥3 reference deployments.</div></div>
+        <div class="doc-kv-row"><div class="doc-kv-key mono">RPC reference</div><div class="doc-kv-val">Direct daemon RPC for integrations. Blocked on API stability — currently subject to change.</div></div>
+        <div class="doc-kv-row"><div class="doc-kv-key mono">FAQ</div><div class="doc-kv-val">Common errors and fixes. Blocked on having more than ~12 users hitting them.</div></div>
+      </div>
+
+      <h2 class="doc-h2">Out of scope</h2>
+      <p class="doc-p">
+        For deep architecture, threat model, and the comparison with bare-metal runtimes — see the <a class="doc-link" href="/architecture">architecture page</a>. For the current README and source — <a class="doc-link" href="https://github.com/itsmehatef/dclaw" target="_blank" rel="noopener">github.com/itsmehatef/dclaw</a>.
+      </p>
+    </article>
+  </DocsShell>
+</BaseLayout>

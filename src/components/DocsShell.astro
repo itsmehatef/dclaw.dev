@@ -1,0 +1,53 @@
+---
+interface Props {
+  active: 'index' | 'quickstart' | 'cli' | 'fleet';
+}
+const { active } = Astro.props;
+
+const groups = [
+  { group: "start here", items: [
+    { id: "index", label: "Overview", href: "/docs" },
+    { id: "quickstart", label: "Quickstart", href: "/docs/quickstart" },
+  ]},
+  { group: "reference", items: [
+    { id: "cli", label: "CLI reference", href: "/docs/cli" },
+    { id: "fleet", label: "fleet.yaml", href: "/docs/fleet" },
+  ]},
+  { group: "coming soon", items: [
+    { id: "channels", label: "Channel plugins", soon: true },
+    { id: "recipes", label: "Recipes", soon: true },
+    { id: "rpc", label: "RPC reference", soon: true },
+    { id: "faq", label: "FAQ", soon: true },
+  ]},
+];
+---
+<section class="docs-shell" data-screen-label={`Docs / ${active}`}>
+  <div class="container-page docs-container">
+    <aside class="docs-sidebar">
+      <div class="docs-sidebar-title mono">./docs · v0.3.0-beta.2</div>
+      {groups.map((g) => (
+        <div class="docs-nav-group">
+          <div class="docs-nav-label">{g.group}</div>
+          {g.items.map((it) => (
+            it.soon ? (
+              <a class="docs-nav-link soon" href="#" onclick="event.preventDefault()">
+                {it.label}<span class="docs-soon-tag">soon</span>
+              </a>
+            ) : (
+              <a class={`docs-nav-link ${active === it.id ? 'active' : ''}`} href={it.href}>
+                {it.label}
+              </a>
+            )
+          ))}
+        </div>
+      ))}
+      <div class="docs-sidebar-foot">
+        <a href="https://github.com/itsmehatef/dclaw" target="_blank" rel="noopener" class="docs-side-out">GitHub README →</a>
+        <a href="https://github.com/itsmehatef/dclaw/blob/main/docs/architecture.md" target="_blank" rel="noopener" class="docs-side-out">architecture.md →</a>
+      </div>
+    </aside>
+    <main class="docs-main">
+      <slot />
+    </main>
+  </div>
+</section>

@@ -1,0 +1,103 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import DocsShell from '../../components/DocsShell.astro';
+
+const example = `# fleet.yaml — declarative agent fleet
+version: 1
+
+defaults:
+  image: dclaw-agent:v0.1
+  model: anthropic/claude-3-5-sonnet
+  max_cost_usd: 10
+
+agents:
+  - name: code-reviewer
+    workspace: ~/repos/main-app
+    model: anthropic/claude-3-5-sonnet
+    channels: [slack:#code-reviews]
+    max_cost_usd: 25
+
+  - name: oncall-triage
+    workspace: ~/dclaw/oncall
+    model: openai/gpt-4o
+    channels: [discord:#alerts, slack:#ops]
+    network_allowlist:
+      - api.pagerduty.com
+      - api.linear.app
+
+  - name: scratch
+    workspace: ~/dclaw/scratch
+    # inherits image, model, max_cost from defaults
+`;
+
+const top: [string, string][] = [
+  ["version",   "Schema version. Currently 1. Required."],
+  ["defaults",  "Inherited by every agent unless overridden. Optional."],
+  ["agents",    "List of agent specs. At least one required."],
+];
+
+const spec: [string, string][] = [
+  ["name",              "Unique identifier. [a-z0-9-]+, max 32 chars. Required."],
+  ["image",             "OCI image. Defaults to dclaw-agent:v0.1."],
+  ["workspace",         "Host path. Validated against denylist + symlink-resolved. Required."],
+  ["workspace_trust",   "Bool. Bypass denylist. Logged. Default false."],
+  ["model",             "Provider/model string. Routed via pi-mono. anthropic/* · openai/* · google/* · openrouter/*."],
+  ["channels",          "List of channel:target. e.g. slack:#ops, discord:#alerts. Plugin must be installed."],
+  ["network_allowlist", "FQDNs the agent can reach. Empty = LLM provider only. CIDRs not yet supported."],
+  ["max_cost_usd",      "Hard spend cap. Daemon enforces; container is killed when hit."],
+  ["env",               "Map of name → value. Passed at container start. Never written to disk."],
+];
+---
+<BaseLayout title="fleet.yaml · dclaw" route="docs">
+  <DocsShell active="fleet">
+    <article>
+      <div class="doc-h1-block">
+        <div class="doc-eyebrow">reference</div>
+        <h1 class="doc-h1">fleet.yaml</h1>
+      </div>
+      <p class="doc-p">
+        The declarative source of truth for your agents. <span class="mono">dclaw up</span> reads this file and reconciles. Validated on load — the daemon refuses to start with an invalid fleet.
+      </p>
+      <p class="doc-p">
+        Default location: <span class="mono">~/.config/dclaw/fleet.yaml</span> (XDG-aware).
+      </p>
+
+      <h2 class="doc-h2">Example</h2>
+      <pre class="doc-code"><code>{example}</code><span class="doc-code-lang">yaml</span></pre>
+
+      <h2 class="doc-h2">Top-level keys</h2>
+      <div class="doc-kv">
+        {top.map(([k, v]) => (
+          <div class="doc-kv-row">
+            <div class="doc-kv-key mono">{k}</div>
+            <div class="doc-kv-val">{v}</div>
+          </div>
+        ))}
+      </div>
+
+      <h2 class="doc-h2">Agent spec</h2>
+      <div class="doc-kv">
+        {spec.map(([k, v]) => (
+          <div class="doc-kv-row">
+            <div class="doc-kv-key mono">{k}</div>
+            <div class="doc-kv-val">{v}</div>
+          </div>
+        ))}
+      </div>
+
+      <div class="doc-callout doc-callout-warn">
+        <div class="doc-callout-title">Validation is strict</div>
+        <div>Unknown keys are an error, not a warning. This is intentional — silently ignoring typos is how you end up with a workspace pointing somewhere you didn't expect.</div>
+      </div>
+
+      <h2 class="doc-h2">Reconciliation</h2>
+      <p class="doc-p">When you run <span class="mono">dclaw up</span>:</p>
+      <ul class="doc-ul">
+        <li><b>Missing</b> agents (in fleet, not running) → created.</li>
+        <li><b>Drifted</b> agents (running, but spec changed) → recreated. Workspace preserved.</li>
+        <li><b>Matching</b> agents (running, spec matches) → left alone.</li>
+        <li><b>Orphaned</b> agents (running, not in fleet) → flagged in <span class="mono">dclaw status</span> but <em>not</em> removed. Use <span class="mono">dclaw agent destroy</span> explicitly.</li>
+      </ul>
+    </article>
+  </DocsShell>
+</BaseLayout>

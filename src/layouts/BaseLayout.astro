@@ -1,0 +1,56 @@
+---
+import '../styles/global.css';
+import Nav from '../components/Nav.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  route: 'home' | 'architecture' | 'docs' | 'changelog';
+}
+
+const { title, description = 'Container-native multi-agent platform with independently versioned channel plugins, sandboxed agent execution, and fleet orchestration.', route } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <script is:inline>
+      // Theme bootstrap — runs before paint to avoid flash.
+      (function () {
+        try {
+          var t = localStorage.getItem('dclaw-theme') || 'light';
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
+    <Nav route={route} />
+    <slot />
+
+    <script is:inline>
+      // Theme toggle wiring (lives at the document level so every page gets it).
+      document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-theme-toggle]');
+        if (!btn) return;
+        var cur = document.documentElement.getAttribute('data-theme') || 'light';
+        var next = cur === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('dclaw-theme', next); } catch (_) {}
+        document.querySelectorAll('[data-theme-icon]').forEach(function (el) {
+          el.setAttribute('data-icon', next);
+        });
+      });
+    </script>
+  </body>
+</html>
