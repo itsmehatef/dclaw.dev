@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "dclaw-dev",
+  "name": "dclaw",
   "compatibility_date": "2026-04-27",
   "assets": {
     "directory": "./dist",
