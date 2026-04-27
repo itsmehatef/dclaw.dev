@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>dclaw · Container-native multi-agent platform</title>
+<link rel="icon" type="image/png" href="favicon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css?v=11" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="Nav.jsx"></script>
+<script type="text/babel" src="Diagram.jsx"></script>
+<script type="text/babel" src="DiagramFull.jsx"></script>
+<script type="text/babel" src="HomePage.jsx"></script>
+<script type="text/babel" src="ArchPage.jsx"></script>
+<script type="text/babel" src="ChangelogPage.jsx"></script>
+<script type="text/babel" src="DocsPage.jsx"></script>
+<script type="text/babel" src="Tweaks.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "docker",
+  "theme": "light",
+  "density": "tight"
+}/*EDITMODE-END*/;
+
+const { useState, useEffect } = React;
+
+function App() {
+  const parseHash = () => {
+    const h = window.location.hash.replace(/^#\/?/, '');
+    const [base, sub] = h.split('/');
+    if (base === 'architecture') return { route: 'architecture', sub: null };
+    if (base === 'changelog')    return { route: 'changelog', sub: null };
+    if (base === 'docs')         return { route: 'docs', sub: sub || null };
+    return { route: 'home', sub: null };
+  };
+
+  const initial = parseHash();
+  const [route, setRoute] = useState(initial.route);
+  const [docsSub, setDocsSub] = useState(initial.sub);
+  const [tweaks, setTweaks] = useState(TWEAK_DEFAULTS);
+  const [editMode, setEditMode] = useState(false);
+
+  useEffect(() => {
+    window.applyTweaks(tweaks);
+  }, [tweaks]);
+
+  useEffect(() => {
+    const onHash = () => {
+      const p = parseHash();
+      setRoute(p.route);
+      setDocsSub(p.sub);
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  useEffect(() => {
+    if (route === 'home') window.location.hash = '/';
+    else if (route === 'docs') window.location.hash = '/docs' + (docsSub ? '/' + docsSub : '');
+    else window.location.hash = '/' + route;
+  }, [route, docsSub]);
+
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (!e.data || typeof e.data !== 'object') return;
+      if (e.data.type === '__activate_edit_mode') setEditMode(true);
+      if (e.data.type === '__deactivate_edit_mode') setEditMode(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const updateTweaks = (next) => {
+    setTweaks(next);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: next }, '*');
+  };
+
+  const setDocsSubAndRoute = (sub) => {
+    setRoute('docs');
+    setDocsSub(sub);
+    window.scrollTo(0, 0);
+  };
+
+  return (
+    <React.Fragment>
+      <Nav route={route} setRoute={setRoute} theme={tweaks.theme} toggleTheme={() => updateTweaks({ ...tweaks, theme: tweaks.theme === 'dark' ? 'light' : 'dark' })} />
+      {route === 'home' ? <HomePage />
+        : route === 'architecture' ? <ArchPage />
+        : route === 'docs' ? <DocsPage subroute={docsSub} setSubroute={setDocsSubAndRoute} />
+        : <ChangelogPage />}
+      <Tweaks tweaks={tweaks} setTweaks={updateTweaks} visible={editMode} />
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
