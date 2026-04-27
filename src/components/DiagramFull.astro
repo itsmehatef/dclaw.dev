@@ -1,86 +1,107 @@
 ---
 const DF_REGIONS: Record<string, { title: string; desc: string }> = {
   user: { title: "User entry", desc: "The conversation begins from a chat platform. Each platform is a separate plugin container — no shared codepath, no version coupling. Add Telegram tomorrow without redeploying anything else." },
-  ext: { title: "LLM provider (external)", desc: "The data plane talks directly to whatever LLM you configure — Anthropic, OpenAI, Google, OpenRouter, or any endpoint pi-mono supports. The daemon never makes LLM calls; it only orchestrates. This keeps the control plane provider-agnostic and means a provider outage doesn't take the daemon down." },
+  ext: { title: "LLM provider (external)", desc: "Main agent + workers talk DIRECTLY to the configured LLM (Anthropic, OpenAI, Google, OpenRouter, …). The daemon never makes LLM calls. Provider outages don't take the control plane down." },
   ops: { title: "Operational surface", desc: "What you actually touch. fleet.yaml is the declarative source of truth. The CLI (Go) handles up/status/logs/upgrade. The web dashboard (TypeScript) is the visual surface — same RPC, different skin." },
   plugin: { title: "Channel plugins", desc: "Independently versioned containers. discord v1.5.0, slack v2.0.3, whatsapp v0.8.2 today. Adding a channel = writing a new plugin against the channel-router contract. Removing a channel = pulling its container." },
-  daemon: { title: "dclaw daemon", desc: "Go process on the host. The control plane. Routes inbound messages to agents, manages the fleet (spawn/health/teardown), enforces quotas (max concurrent, max $/day), and persists agent registry to SQLite." },
-  router: { title: "Channel router", desc: "Inbound message → agent dispatch. Maps a channel event (\"new Slack DM in #ops\") to the correct main agent or spawns a worker." },
-  fleet: { title: "Fleet manager", desc: "Container lifecycle. Spawns agents per fleet.yaml. Health-checks, restarts on crash, tears down ephemeral workers when their task completes." },
-  quota: { title: "Quota enforcement", desc: "max-concurrent and max-$ caps before spawn. A worker that would push you over budget is rejected at the daemon — it never starts." },
-  registry: { title: "Agent registry", desc: "SQLite. Stores agent state, conversation pointers, fleet config snapshot. Survives daemon restart." },
-  main: { title: "Main agent container", desc: "Always-on, ~400MB. The persistent agent that holds conversation state. Runs the dclaw agent binary which calls the configured LLM provider and manages context. Tools execute as sandboxed sub-containers." },
-  mainBin: { title: "Agent binary", desc: "Go + pi-mono runtime. Multi-provider LLM client (Anthropic, OpenAI, Google, OpenRouter, …) + conversation manager. Runs inside the main container as uid 1000." },
-  workspace: { title: "Workspace (bind mount)", desc: "The only path that crosses the container/host boundary. Validated against denylist + symlink-resolved before mount." },
-  network: { title: "Scoped network", desc: "Allowlist-only egress. The agent can talk to your configured LLM provider + whatever else you whitelist. Nothing else." },
-  tools: { title: "Built-in tools", desc: "bash · file · grep · web. Each runs as a sandboxed sub-container with its own caps and rootfs. Even an exploited tool can't reach the agent process." },
-  workers: { title: "Worker containers", desc: "Ephemeral, ~400MB each. Spawned per-task by the fleet manager when the main agent delegates. Identical sandbox to the main agent but with scoped tools, scoped network, and a scoped workspace. Destroyed when the task completes." },
+  daemon: { title: "dclaw daemon", desc: "Go process on the host. THE control plane. Routes inbound messages, manages the fleet (spawn/health/teardown), enforces quotas (max-concurrent, max-$/day), persists agent registry to SQLite. Never calls the LLM." },
+  router: { title: "Channel Router", desc: "Inbound message → agent dispatch. Maps a channel event (\"new Slack DM in #ops\") to the correct main agent via dispatcher.sock." },
+  fleet: { title: "Fleet Manager", desc: "Container lifecycle. Spawns main agents per fleet.yaml. Spawns ephemeral workers when the main agent calls spawn_worker. Health-checks. Tears down workers when their task completes." },
+  quota: { title: "Quota Enforcement", desc: "max-concurrent and max-$ caps before spawn. A worker that would push you over budget is rejected at the daemon — it never starts." },
+  registry: { title: "Agent Registry", desc: "SQLite. Stores agent state, conversation pointers, fleet config snapshot. Survives daemon restart." },
+  main: { title: "Main agent container", desc: "Always-on, ~400MB. Holds conversation state. Runs pi-mono inside the sandbox, calls the LLM provider, executes built-in tools (bash, file, grep, web) as sandboxed sub-containers." },
+  workers: { title: "Worker containers", desc: "Ephemeral, ~400MB each. Spawned by Fleet Manager when the main agent calls spawn_worker. Identical sandbox to the main agent but scoped tools / scoped network / scoped workspace. report_to_main on completion, then destroyed." },
+
+  msg: { title: "Boundary 1 — channel-plugin.sock", desc: "USER → channel plugin → daemon's Channel Router. JSON-RPC 2.0 over a Unix domain socket. Every inbound message crosses this boundary." },
+  dispatch: { title: "Boundary 2 — dispatcher.sock", desc: "Channel Router → main agent. msg_in dispatch over a per-agent Unix socket. The daemon stops here; the agent runs from this point." },
+  llm: { title: "LLM call (data plane only)", desc: "Main agent + workers call the LLM provider DIRECTLY from inside their containers. The daemon is bypassed entirely. This is the architectural rule: control plane never sees prompts or completions." },
+  spawn: { title: "spawn_worker / spawn", desc: "Main agent → Fleet Manager (spawn_worker RPC). Fleet Manager spawns a new worker container (Boundary 3 — worker-id.sock) under quota constraints." },
+  report: { title: "report_to_main", desc: "Worker → main agent. When the worker finishes, it streams results back over its own socket. Daemon doesn't touch the result; it just tears the container down." },
+  rpc: { title: "control-plane RPC", desc: "CLI / web dashboard / fleet.yaml apply → daemon. Same RPC surface, different consumers." },
 };
 ---
 
 <div class="df" data-diagram-full>
   <div class="df-titlebar">
     <span>./architecture · dclaw — Platform Architecture v2</span>
-    <span class="df-titlebar-hint">faithful · click regions to inspect</span>
+    <span class="df-titlebar-hint">canonical · hover regions or arrows</span>
   </div>
 
-  <div class="df-stage">
-    <div class="df-row df-row-top">
-      <div class="df-block df-user" data-region="user">
+  <div class="df-canvas" data-canvas>
+    <svg class="df-arrows" data-arrows aria-hidden="true"></svg>
+
+    <div class="df-grid">
+      <div class="df-cell df-cell-user df-user" data-region="user" data-anchor="user">
         <div class="df-tag">USER</div>
         <div class="df-name">Discord · Slack · WhatsApp</div>
       </div>
-      <div class="df-block df-ext" data-region="ext">
+
+      <div class="df-cell df-cell-ext df-ext" data-region="ext" data-anchor="ext">
         <div class="df-tag">LLM PROVIDER · EXTERNAL</div>
         <div class="df-name mono">Anthropic · OpenAI · Google · …</div>
-        <div class="df-sub">configurable per agent · dashed = TLS egress only</div>
+        <div class="df-sub">configurable per agent · TLS egress only</div>
       </div>
-      <div class="df-block df-ops" data-region="ops">
+
+      <div class="df-cell df-cell-plugins df-plugin" data-region="plugin" data-anchor="plugin">
+        <div class="df-band-tag">CHANNEL PLUGINS · independently versioned containers</div>
+        <div class="df-pills">
+          <span class="df-pill">discord v1.5.0</span>
+          <span class="df-pill">slack v2.0.3</span>
+          <span class="df-pill">whatsapp v0.8.2</span>
+        </div>
+      </div>
+
+      <div class="df-cell df-cell-ops df-ops" data-region="ops" data-anchor="ops">
         <div class="df-tag">OPERATIONAL SURFACE</div>
-        <div class="df-ops-grid">
+        <div class="df-ops-stack">
           <div class="df-mini"><div class="df-mini-name">fleet.yaml</div><div class="df-mini-sub">declarative config</div></div>
           <div class="df-mini"><div class="df-mini-name">dclaw CLI · Go</div><div class="df-mini-sub">up · status · logs · upgrade</div></div>
           <div class="df-mini"><div class="df-mini-name">Web Dashboard</div><div class="df-mini-sub">TypeScript</div></div>
         </div>
       </div>
-    </div>
 
-    <div class="df-band df-plugin" data-region="plugin">
-      <div class="df-band-tag">CHANNEL PLUGINS · independently versioned containers</div>
-      <div class="df-pills">
-        <span class="df-pill">discord v1.5.0</span>
-        <span class="df-pill">slack v2.0.3</span>
-        <span class="df-pill">whatsapp v0.8.2</span>
-      </div>
-    </div>
+      <div class="df-plane-band df-plane-control">control plane — runs on host, never calls the LLM</div>
 
-    <div class="df-band df-daemon on" data-region="daemon" data-default>
-      <div class="df-band-tag df-band-tag-strong">dclaw DAEMON · Go · CONTROL PLANE · runs on host</div>
-      <div class="df-daemon-grid">
-        <div class="df-block" data-region="router"><div class="df-mini-name">Channel Router</div><div class="df-mini-sub">message routing</div></div>
-        <div class="df-block" data-region="fleet"><div class="df-mini-name">Fleet Manager</div><div class="df-mini-sub">spawn · health · teardown</div></div>
-        <div class="df-block" data-region="quota"><div class="df-mini-name">Quota Enforce</div><div class="df-mini-sub">max-concurrent · max-$</div></div>
-        <div class="df-block df-registry" data-region="registry"><div class="df-mini-name">Agent Registry</div><div class="df-mini-sub">SQLite</div></div>
-      </div>
-    </div>
-
-    <div class="df-row df-row-data">
-      <div class="df-band df-main" data-region="main">
-        <div class="df-band-tag">MAIN AGENT CONTAINER · ~400MB · always-on · DATA PLANE</div>
-        <div class="df-main-grid">
-          <div class="df-block" data-region="mainBin"><div class="df-mini-name">dclaw agent · Go</div><div class="df-mini-sub">Anthropic calls · conversation</div></div>
-          <div class="df-block" data-region="workspace"><div class="df-mini-name">workspace</div><div class="df-mini-sub">bind mount</div></div>
-          <div class="df-block" data-region="network"><div class="df-mini-name">scoped network</div><div class="df-mini-sub">allowlist only</div></div>
-          <div class="df-block df-tools" data-region="tools"><div class="df-mini-name">Built-in tools · sandboxed sub-containers</div><div class="df-mini-sub mono">bash · file · grep · web</div></div>
+      <div class="df-cell df-cell-daemon df-daemon" data-region="daemon" data-anchor="daemon">
+        <div class="df-band-tag df-band-tag-strong">dclaw DAEMON · Go · CONTROL PLANE</div>
+        <div class="df-daemon-grid">
+          <div class="df-block" data-region="router" data-anchor="router">
+            <div class="df-mini-name">Channel Router</div>
+            <div class="df-mini-sub">message routing</div>
+          </div>
+          <div class="df-block" data-region="fleet" data-anchor="fleet">
+            <div class="df-mini-name">Fleet Manager</div>
+            <div class="df-mini-sub">spawn · health · teardown</div>
+          </div>
+          <div class="df-block" data-region="quota" data-anchor="quota">
+            <div class="df-mini-name">Quota Enforce</div>
+            <div class="df-mini-sub">max-concurrent · max-$</div>
+          </div>
+          <div class="df-block df-registry" data-region="registry" data-anchor="registry">
+            <div class="df-mini-name">Agent Registry</div>
+            <div class="df-mini-sub">SQLite</div>
+          </div>
         </div>
       </div>
 
-      <div class="df-band df-workers" data-region="workers">
-        <div class="df-band-tag">WORKER CONTAINERS · ~400MB ea · ephemeral · DATA PLANE</div>
+      <div class="df-plane-band df-plane-data">data plane — agent containers, sandboxed</div>
+
+      <div class="df-cell df-cell-main df-main" data-region="main" data-anchor="main">
+        <div class="df-band-tag">MAIN AGENT · ~400MB · always-on</div>
+        <div class="df-main-grid">
+          <div class="df-mini"><div class="df-mini-name">pi-mono · Node</div><div class="df-mini-sub">LLM client · convo</div></div>
+          <div class="df-mini"><div class="df-mini-name">workspace</div><div class="df-mini-sub">bind mount</div></div>
+          <div class="df-mini"><div class="df-mini-name">scoped network</div><div class="df-mini-sub">allowlist</div></div>
+          <div class="df-mini df-tools-mini"><div class="df-mini-name">tools (sub-cnt)</div><div class="df-mini-sub mono">bash · file · grep · web</div></div>
+        </div>
+      </div>
+
+      <div class="df-cell df-cell-workers df-workers" data-region="workers" data-anchor="workers">
+        <div class="df-band-tag">WORKERS · ~400MB ea · ephemeral</div>
         <div class="df-workers-grid">
-          <div class="df-worker"><div class="df-mini-name">Worker 1</div><div class="df-mini-sub">scoped tools</div><div class="df-mini-sub">scoped network</div><div class="df-mini-sub">scoped workspace</div></div>
-          <div class="df-worker"><div class="df-mini-name">Worker 2</div><div class="df-mini-sub">scoped tools</div><div class="df-mini-sub">scoped network</div><div class="df-mini-sub">scoped workspace</div></div>
-          <div class="df-worker"><div class="df-mini-name">Worker N</div><div class="df-mini-sub">scoped tools</div><div class="df-mini-sub">scoped network</div><div class="df-mini-sub">scoped workspace</div></div>
+          <div class="df-worker"><div class="df-mini-name">Worker 1</div><div class="df-mini-sub">scoped tools</div></div>
+          <div class="df-worker"><div class="df-mini-name">Worker 2</div><div class="df-mini-sub">scoped tools</div></div>
+          <div class="df-worker"><div class="df-mini-name">Worker N</div><div class="df-mini-sub">scoped tools</div></div>
         </div>
       </div>
     </div>
@@ -88,31 +109,159 @@ const DF_REGIONS: Record<string, { title: string; desc: string }> = {
 
   <div class="df-detail">
     <div class="df-detail-title mono" data-detail-title>dclaw daemon</div>
-    <div class="df-detail-desc" data-detail-desc>Go process on the host. The control plane. Routes inbound messages to agents, manages the fleet (spawn/health/teardown), enforces quotas (max concurrent, max $/day), and persists agent registry to SQLite.</div>
+    <div class="df-detail-desc" data-detail-desc>Go process on the host. THE control plane. Routes inbound messages, manages the fleet (spawn/health/teardown), enforces quotas (max-concurrent, max-$/day), persists agent registry to SQLite. Never calls the LLM.</div>
   </div>
 
   <div class="df-legend">
     <span><span class="df-swatch df-sw-user"></span>user</span>
     <span><span class="df-swatch df-sw-plugin"></span>plugin</span>
-    <span><span class="df-swatch df-sw-ops"></span>ops surface</span>
     <span><span class="df-swatch df-sw-daemon"></span>control plane</span>
     <span><span class="df-swatch df-sw-main"></span>main agent · data plane</span>
     <span><span class="df-swatch df-sw-worker"></span>workers · data plane</span>
     <span><span class="df-swatch df-sw-ext"></span>external</span>
+    <span><span class="df-swatch df-sw-ops"></span>ops surface</span>
   </div>
 </div>
 
 <script is:inline define:vars={{ DF_REGIONS }}>
-  document.querySelectorAll('[data-diagram-full]').forEach((root) => {
-    const titleEl = root.querySelector('[data-detail-title]');
-    const descEl = root.querySelector('[data-detail-desc]');
-    const blocks = root.querySelectorAll('[data-region]');
-    const setActive = (id) => {
-      blocks.forEach((b) => b.classList.toggle('on', b.dataset.region === id));
-      const r = DF_REGIONS[id] || DF_REGIONS.daemon;
+  // Connection topology (matches canonical diagram).
+  // Each connection: {from, fromSide, to, toSide, kind, label, region}
+  // `region` is the DF_REGIONS key whose detail to show on hover.
+  const CONNECTIONS = [
+    { from: "user",   fromSide: "bottom", to: "plugin", toSide: "top",    kind: "solid",  label: "msg",          region: "msg"      },
+    { from: "plugin", fromSide: "bottom", to: "router", toSide: "top",    kind: "solid",  label: "JSON-RPC",     region: "msg"      },
+    { from: "router", fromSide: "bottom", to: "main",   toSide: "top",    kind: "solid",  label: "msg_in",       region: "dispatch" },
+    { from: "main",   fromSide: "right",  to: "fleet",  toSide: "bottom", kind: "solid",  label: "spawn_worker", region: "spawn"    },
+    { from: "fleet",  fromSide: "right",  to: "workers",toSide: "top",    kind: "solid",  label: "spawn",        region: "spawn"    },
+    { from: "workers",fromSide: "left",   to: "main",   toSide: "right",  kind: "solid",  label: "report_to_main", region: "report" },
+    { from: "main",   fromSide: "top",    to: "ext",    toSide: "bottom", kind: "dashed", label: "LLM call (TLS, direct)", region: "llm" },
+    { from: "ops",    fromSide: "left",   to: "daemon", toSide: "right",  kind: "dashed", label: "control RPC",  region: "rpc"      },
+  ];
+
+  function init(root) {
+    const canvas  = root.querySelector("[data-canvas]");
+    const svg     = root.querySelector("[data-arrows]");
+    const titleEl = root.querySelector("[data-detail-title]");
+    const descEl  = root.querySelector("[data-detail-desc]");
+
+    function setActive(regionKey) {
+      const r = DF_REGIONS[regionKey] || DF_REGIONS.daemon;
       titleEl.textContent = r.title;
       descEl.textContent = r.desc;
+      root.querySelectorAll("[data-region]").forEach((el) => {
+        el.classList.toggle("on", el.dataset.region === regionKey);
+      });
+      svg.querySelectorAll("[data-conn]").forEach((p) => {
+        p.classList.toggle("on", p.dataset.conn === regionKey);
+      });
+    }
+
+    function anchorPoint(el, side) {
+      const cb = canvas.getBoundingClientRect();
+      const r  = el.getBoundingClientRect();
+      const x  = r.left - cb.left;
+      const y  = r.top  - cb.top;
+      const w  = r.width;
+      const h  = r.height;
+      switch (side) {
+        case "top":    return [x + w / 2, y];
+        case "bottom": return [x + w / 2, y + h];
+        case "left":   return [x,         y + h / 2];
+        case "right":  return [x + w,     y + h / 2];
+      }
+    }
+
+    function pathBetween(a, b, fromSide, toSide) {
+      const [x1, y1] = a;
+      const [x2, y2] = b;
+      // Orthogonal routing: bend once at the midpoint of the dominant axis.
+      let mx, my;
+      if (fromSide === "top" || fromSide === "bottom") {
+        my = (y1 + y2) / 2;
+        return `M ${x1} ${y1} L ${x1} ${my} L ${x2} ${my} L ${x2} ${y2}`;
+      } else {
+        mx = (x1 + x2) / 2;
+        return `M ${x1} ${y1} L ${mx} ${y1} L ${mx} ${y2} L ${x2} ${y2}`;
+      }
+    }
+
+    function labelPoint(a, b, fromSide) {
+      const [x1, y1] = a;
+      const [x2, y2] = b;
+      if (fromSide === "top" || fromSide === "bottom") {
+        return [(x1 + x2) / 2 + 4, (y1 + y2) / 2 - 4];
+      }
+      return [(x1 + x2) / 2 + 6, (y1 + y2) / 2 - 4];
+    }
+
+    function render() {
+      // Resize SVG to match canvas
+      const cb = canvas.getBoundingClientRect();
+      svg.setAttribute("viewBox", `0 0 ${cb.width} ${cb.height}`);
+      svg.setAttribute("width",  cb.width);
+      svg.setAttribute("height", cb.height);
+
+      // Clear
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+      // Defs: arrowhead marker
+      const NS = "http://www.w3.org/2000/svg";
+      const defs = document.createElementNS(NS, "defs");
+      defs.innerHTML =
+        '<marker id="df-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">' +
+          '<path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>' +
+        '</marker>';
+      svg.appendChild(defs);
+
+      CONNECTIONS.forEach((c) => {
+        const fromEl = root.querySelector(`[data-anchor="${c.from}"]`);
+        const toEl   = root.querySelector(`[data-anchor="${c.to}"]`);
+        if (!fromEl || !toEl) return;
+        const a = anchorPoint(fromEl, c.fromSide);
+        const b = anchorPoint(toEl,   c.toSide);
+        const d = pathBetween(a, b, c.fromSide, c.toSide);
+
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", d);
+        path.setAttribute("class", "df-arrow-path " + (c.kind === "dashed" ? "df-arrow-dashed" : "df-arrow-solid"));
+        path.setAttribute("marker-end", "url(#df-arrow)");
+        path.setAttribute("data-conn", c.region);
+        path.style.pointerEvents = "stroke";
+        path.addEventListener("mouseenter", () => setActive(c.region));
+        svg.appendChild(path);
+
+        if (c.label) {
+          const [lx, ly] = labelPoint(a, b, c.fromSide);
+          const text = document.createElementNS(NS, "text");
+          text.setAttribute("x", lx);
+          text.setAttribute("y", ly);
+          text.setAttribute("class", "df-arrow-label");
+          text.setAttribute("data-conn", c.region);
+          text.textContent = c.label;
+          svg.appendChild(text);
+        }
+      });
+    }
+
+    // Hover anchors
+    root.querySelectorAll("[data-anchor]").forEach((el) => {
+      const reg = el.dataset.region;
+      el.addEventListener("mouseenter", () => setActive(reg));
+    });
+
+    render();
+    let raf = null;
+    const onResize = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(render);
     };
-    blocks.forEach((b) => b.addEventListener('mouseenter', () => setActive(b.dataset.region)));
-  });
+    window.addEventListener("resize", onResize);
+    // Re-render once after fonts settle (text widths can shift box positions).
+    setTimeout(render, 60);
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(render);
+    }
+  }
+
+  document.querySelectorAll("[data-diagram-full]").forEach(init);
 </script>
