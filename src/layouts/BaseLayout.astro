@@ -6,9 +6,16 @@ interface Props {
   title: string;
   description?: string;
   route: 'home' | 'architecture' | 'docs' | 'changelog';
+  /** Path or URL to the social share image. Defaults to the site-wide card. */
+  image?: string;
 }
 
-const { title, description = 'Container-native multi-agent platform with independently versioned channel plugins, sandboxed agent execution, and fleet orchestration.', route } = Astro.props;
+const { title, description = 'Container-native multi-agent platform with independently versioned channel plugins, sandboxed agent execution, and fleet orchestration.', route, image = '/og.png' } = Astro.props;
+
+// Absolute URLs are required by Open Graph / Twitter scrapers.
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL(image, Astro.site);
+const ogImageAlt = 'dclaw — container-native multi-agent platform, hardened by default.';
 ---
 
 <!DOCTYPE html>
@@ -18,7 +25,29 @@ const { title, description = 'Container-native multi-agent platform with indepen
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="dclaw" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={ogImageAlt} />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@itsmehatef" />
+    <meta name="twitter:creator" content="@itsmehatef" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={ogImageAlt} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
